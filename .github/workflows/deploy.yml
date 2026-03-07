@@ -15,7 +15,7 @@ jobs:
         with:
           host: 72.62.71.161
           username: root
-          key: ${{ secrets.SERVER_SSH_KEY }}
+          key: ${{ secrets.MESBAH_SERVER_SSH_KEY }}
           script: |
             cd /www/wwwroot/mesbah.ae
             git pull origin main
