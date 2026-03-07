@@ -1,7 +1,7 @@
 <?php
+// test from github
 // ===== بوت إضافة المنتجات مع نظام كلمة المرور =====
 // https://api.telegram.org/bot8045148484:AAHCFv9IbKti1ilA4HI3h84AZ9I8RfNqrqc/setWebhook?url=https://mesbah.ae/ar/bot.php
-
 // ===== إعدادات البوت =====
 $telegramToken = '8045148484:AAHCFv9IbKti1ilA4HI3h84AZ9I8RfNqrqc';
 $woocommerceUrl = 'https://mesbah.ae/ar/';
@@ -3163,6 +3163,7 @@ function sanitizeSlug($text) {
     return $slug;
 }
 ?>
+
 
 
 
