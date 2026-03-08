@@ -142,7 +142,7 @@ if (isset($update["message"])) {
                 ];
                 saveData($usersData, $dataFile);
                 
-                sendTelegramMessage($chatId, "✅ تم بدء منتج جديد!\n\n📝 الرجاء إدخال اسم المنتج (مثال: سلسلة كهرمان طبيعية):\n\n💡 ستتم مطالبتك بإدخال:\n• الاسم (اسم المنتج الكامل)\n• رقم/رمز المنتج (Product ID) - مثل: 25748 أو ABC123 (سيتم استخدامه كـ SKU تلقائياً)\n• الباركود (Barcode) - مثل: 1234567890123\n• السعر\n• المخزون\n• المجموعات\n• الوصف الطويل\n• المعلومات الإضافية (سيتم توليد الوصف القصير تلقائياً)\n• الصور");
+                sendTelegramMessage($chatId, "✅ تم بدء منتج جديد!\n\n📝 الرجاء إدخال اسم المنتج (مثال: سلسلة كهرمان طبيعية):\n\n💡 ستتم مطالبتك بإدخال:\n• الاسم (اسم المنتج الكامل)\n• رقم/رمز المنتج (Product ID) - مثل: 25748 أو ABC123\n• رمز SKU (أرقام أو أحرف) - مثل: SKU-25748 أو 25748\n• الباركود (Barcode) - مثل: 1234567890123\n• السعر\n• المخزون\n• المجموعات\n• الوصف الطويل\n• المعلومات الإضافية (سيتم توليد الوصف القصير تلقائياً)\n• الصور");
                 break;
 
             case "/show":
@@ -166,7 +166,7 @@ if (isset($update["message"])) {
                     $msg .= "🏷️ النوع: " . $productTypeName . "\n";
                     
                     // رمز المنتج
-                    $msg .= "🏷️ رمز المنتج: " . ($usersData[$userId]["sku"] ?? "غير محدد") . " (تلقائي)\n";
+                    $msg .= "🏷️ رمز SKU: " . ($usersData[$userId]["sku"] ?? "غير محدد") . "\n";
                     
                     // رقم المنتج
                     $msg .= "🆔 رقم المنتج: " . ($usersData[$userId]["product_id"] ?? "غير محدد") . "\n";
@@ -249,7 +249,8 @@ if (isset($update["message"])) {
                 if (isset($usersData[$userId]["product"]["name"]) &&
                     isset($usersData[$userId]["product"]["price"]) &&
                     !empty($usersData[$userId]["long_description"]) &&
-                    !empty($usersData[$userId]["barcode"])) {
+                    !empty($usersData[$userId]["barcode"]) &&
+                    !empty($usersData[$userId]["sku"])) {
                     
                     writeLog("Starting product upload for user: " . $userId);
                     sendTelegramMessage($chatId, "⏳ جاري رفع المنتج...");
@@ -304,6 +305,7 @@ if (isset($update["message"])) {
                     if (!isset($usersData[$userId]["product"]["price"])) $missingFields[] = "السعر";
                     if (empty($usersData[$userId]["long_description"])) $missingFields[] = "الوصف الطويل";
                     if (empty($usersData[$userId]["barcode"])) $missingFields[] = "الباركود";
+                    if (empty($usersData[$userId]["sku"])) $missingFields[] = "رمز SKU";
                     
                     $missingText = implode(", ", $missingFields);
                     sendTelegramMessage($chatId, "⚠️ الرجاء إكمال جميع البيانات المطلوبة قبل الرفع.\n\nالبيانات المفقودة: $missingText\n\nاستخدم /show لعرض البيانات الحالية.");
@@ -328,14 +330,15 @@ if (isset($update["message"])) {
                 ];
                 saveData($usersData, $dataFile);
                 
-                sendTelegramMessage($chatId, "✅ تم بدء منتج جديد!\n\n📝 الرجاء إدخال اسم المنتج (مثال: سلسلة كهرمان طبيعية):\n\n💡 ستتم مطالبتك بإدخال:\n• الاسم (اسم المنتج الكامل)\n• رقم/رمز المنتج (Product ID) - مثل: 25748 أو ABC123 (سيتم استخدامه كـ SKU تلقائياً)\n• الباركود (Barcode) - مثل: 1234567890123\n• السعر\n• المخزون\n• المجموعات\n• الوصف الطويل\n• المعلومات الإضافية (سيتم توليد الوصف القصير تلقائياً)\n• الصور");
+                sendTelegramMessage($chatId, "✅ تم بدء منتج جديد!\n\n📝 الرجاء إدخال اسم المنتج (مثال: سلسلة كهرمان طبيعية):\n\n💡 ستتم مطالبتك بإدخال:\n• الاسم (اسم المنتج الكامل)\n• رقم/رمز المنتج (Product ID) - مثل: 25748 أو ABC123\n• رمز SKU (أرقام أو أحرف) - مثل: SKU-25748 أو 25748\n• الباركود (Barcode) - مثل: 1234567890123\n• السعر\n• المخزون\n• المجموعات\n• الوصف الطويل\n• المعلومات الإضافية (سيتم توليد الوصف القصير تلقائياً)\n• الصور");
                 break;
 
             case "✏️ تعديل البيانات":
                 $editKeyboard = [
                     ['تعديل الاسم', 'تعديل رقم المنتج'],
-                    ['تعديل الباركود', 'تعديل السعر'],
-                    ['تعديل المخزون', 'تعديل الفئات'],
+                    ['تعديل رمز SKU', 'تعديل الباركود'],
+                    ['تعديل السعر', 'تعديل المخزون'],
+                    ['تعديل الفئات'],
                     ['تعديل الوصف الطويل', 'تعديل المعلومات الإضافية'],
                     ['رجوع']
                 ];
@@ -406,6 +409,13 @@ if (isset($update["message"])) {
                 $usersData[$userId]["step"] = null;
                 saveData($usersData, $dataFile);
                 sendTelegramMessage($chatId, "🆔 الرجاء إدخال رقم المنتج الجديد:");
+                break;
+
+            case "تعديل رمز SKU":
+                $usersData[$userId]["edit_mode"] = "editsku";
+                $usersData[$userId]["step"] = null;
+                saveData($usersData, $dataFile);
+                sendTelegramMessage($chatId, "🏷️ الرجاء إدخال رمز SKU الجديد (أرقام أو أحرف):");
                 break;
 
             case "تعديل الباركود":
@@ -652,12 +662,37 @@ if (isset($update["message"]["text"])) {
         
         $productId = trim($text);
         $usersData[$userId]["product_id"] = $productId;
-        // تعيين SKU تلقائياً ليكون نفس رقم/رمز المنتج
-        $usersData[$userId]["sku"] = $productId;
+        $usersData[$userId]["step"] = "sku";
+        saveData($usersData, $dataFile);
+        sendTelegramMessage($chatId, "✅ تم حفظ رقم/رمز المنتج: $productId\n🏷️ الرجاء إدخال رمز SKU (أرقام أو أحرف، مثل: SKU-25748 أو 25748):");
+        return;
+    }
+    
+    if ($usersData[$userId]["step"] === "sku") {
+        // تجاهل أزرار البوت والأوامر
+        if (in_array($text, [
+            "📦 إضافة منتج جديد",
+            "📋 عرض البيانات الحالية",
+            "📤 رفع المنتج",
+            "✏️ تعديل البيانات",
+            "🗑️ حذف آخر صورة",
+            "❌ إلغاء المنتج",
+            "/new", "/start", "/show", "/upload", "/cancel"
+        ])) {
+            sendTelegramMessage($chatId, "⚠️ الرجاء إدخال رمز SKU الفعلي وليس أحد الأزرار!\n\n🏷️ مثال: SKU-25748 أو 25748 أو ABC123");
+            return;
+        }
         
+        if (empty(trim($text))) {
+            sendTelegramMessage($chatId, "⚠️ الرجاء إدخال رمز SKU (أرقام أو أحرف):");
+            return;
+        }
+        
+        $sku = trim($text);
+        $usersData[$userId]["sku"] = $sku;
         $usersData[$userId]["step"] = "barcode";
         saveData($usersData, $dataFile);
-        sendTelegramMessage($chatId, "✅ تم حفظ رقم/رمز المنتج: $productId\n✅ تم تعيين SKU تلقائياً: $productId\n📊 الرجاء إدخال الباركود (مثال: 1234567890123):");
+        sendTelegramMessage($chatId, "✅ تم حفظ رمز SKU: $sku\n📊 الرجاء إدخال الباركود (مثال: 1234567890123):");
         return;
     }
     
@@ -1714,8 +1749,9 @@ function uploadProduct($userData, $chatId) {
         if (empty($userData["product"]["name"]) || 
             empty($userData["product"]["price"]) || 
             empty($userData["long_description"]) || 
+            empty($userData["sku"]) ||
             empty($userData["images"])) {
-            sendTelegramMessage($chatId, "❌ بيانات المنتج غير مكتملة");
+            sendTelegramMessage($chatId, "❌ بيانات المنتج غير مكتملة (الاسم، السعر، الوصف الطويل، رمز SKU، وصورة واحدة على الأقل)");
             return false;
         }
 
@@ -2115,7 +2151,7 @@ function uploadProduct($userData, $chatId) {
             $successMessage .= "📸 عدد الصور: " . count($allImages) . "\n";
             
             if (!empty($userData["sku"])) {
-                $successMessage .= "🏷️ رمز المنتج: " . $userData["sku"] . " (تم تعيينه تلقائياً)\n";
+                $successMessage .= "🏷️ رمز SKU: " . $userData["sku"] . "\n";
             }
             
             if (!empty($userData["product_id"])) {
@@ -2318,14 +2354,25 @@ function handleTextInput($userId, $chatId, $text, &$usersData) {
             if (!empty(trim($text))) {
                 $productId = trim($text);
                 $usersData[$userId]["product_id"] = $productId;
-                // تحديث SKU تلقائياً ليكون نفس رقم/رمز المنتج
-                $usersData[$userId]["sku"] = $productId;
                 $usersData[$userId]["edit_mode"] = null;
                 saveData($usersData, $dataFile);
-                sendTelegramMessage($chatId, "✅ تم تحديث رقم/رمز المنتج بنجاح.\n✅ تم تحديث SKU تلقائياً: $productId");
+                sendTelegramMessage($chatId, "✅ تم تحديث رقم/رمز المنتج بنجاح: $productId");
                 showMainKeyboard($chatId);
             } else {
                 sendTelegramMessage($chatId, "⚠️ الرجاء إدخال رقم/رمز منتج صالح.");
+            }
+            break;
+            
+        case "editsku":
+            if (!empty(trim($text))) {
+                $sku = trim($text);
+                $usersData[$userId]["sku"] = $sku;
+                $usersData[$userId]["edit_mode"] = null;
+                saveData($usersData, $dataFile);
+                sendTelegramMessage($chatId, "✅ تم تحديث رمز SKU بنجاح: $sku");
+                showMainKeyboard($chatId);
+            } else {
+                sendTelegramMessage($chatId, "⚠️ الرجاء إدخال رمز SKU (أرقام أو أحرف).");
             }
             break;
             
