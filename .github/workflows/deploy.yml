@@ -17,5 +17,5 @@ jobs:
           username: root
           key: ${{ secrets.MESBAH_SERVER_SSH_KEY }}
           script: |
-            cd /www/wwwroot/mesbah.ae
+            cd /www/wwwroot/mixbrands.shop
             git pull origin main
