@@ -612,9 +612,14 @@ if (isset($update["message"]["text"])) {
     $chatId = $update["message"]["chat"]["id"];
     $userId = $update["message"]["from"]["id"];
     
-
+    // التأكد من وجود بيانات المستخدم قبل معالجة الخطوات
+    if (!isset($usersData[$userId]) || !array_key_exists("step", $usersData[$userId])) {
+        writeLog("Step handler skipped - user $userId has no session data");
+    } else {
+        writeLog("Step handler - user $userId, step: " . ($usersData[$userId]["step"] ?? "null"));
+    }
     
-    if ($usersData[$userId]["step"] === "name") {
+    if (isset($usersData[$userId]["step"]) && $usersData[$userId]["step"] === "name") {
     // تجاهل أزرار البوت والأوامر
         if (in_array($text, [
         "📦 إضافة منتج جديد", 
@@ -640,7 +645,7 @@ if (isset($update["message"]["text"])) {
     
 
     
-    if ($usersData[$userId]["step"] === "product_id") {
+    if (isset($usersData[$userId]["step"]) && $usersData[$userId]["step"] === "product_id") {
         // تجاهل أزرار البوت والأوامر
         if (in_array($text, [
             "📦 إضافة منتج جديد", 
@@ -665,10 +670,11 @@ if (isset($update["message"]["text"])) {
         $usersData[$userId]["step"] = "sku";
         saveData($usersData, $dataFile);
         sendTelegramMessage($chatId, "✅ تم حفظ رقم/رمز المنتج: $productId\n🏷️ الرجاء إدخال رمز SKU (أرقام أو أحرف، مثل: SKU-25748 أو 25748):");
+        writeLog("Set step to SKU for user $userId - waiting for SKU input");
         return;
     }
     
-    if ($usersData[$userId]["step"] === "sku") {
+    if (isset($usersData[$userId]["step"]) && $usersData[$userId]["step"] === "sku") {
         // تجاهل أزرار البوت والأوامر
         if (in_array($text, [
             "📦 إضافة منتج جديد",
@@ -696,7 +702,7 @@ if (isset($update["message"]["text"])) {
         return;
     }
     
-    if ($usersData[$userId]["step"] === "barcode") {
+    if (isset($usersData[$userId]["step"]) && $usersData[$userId]["step"] === "barcode") {
         // تجاهل أزرار البوت والأوامر
         if (in_array($text, [
             "📦 إضافة منتج جديد", 
