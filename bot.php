@@ -777,9 +777,17 @@ writeLog("Received update: " . json_encode($update));
                 return;
             }
             $usersData[$userId]["product"]["price"] = $text;
+            $usersData[$userId]["step"] = "sku";
+            saveData($usersData, $dataFile);
+            sendTelegramMessage($chatId, "✅ تم حفظ السعر: $text\n🏷️ الرجاء إدخال رمز المنتج (SKU) - يمكن أن يكون أرقاماً أو أحرفاً:");
+            return;
+        }
+
+        if ($usersData[$userId]["step"] === "sku") {
+            $usersData[$userId]["product"]["sku"] = trim($text);
             $usersData[$userId]["step"] = "description";
             saveData($usersData, $dataFile);
-            sendTelegramMessage($chatId, "✅ تم حفظ السعر: $text\n📝 الرجاء إدخال وصف المنتج:");
+            sendTelegramMessage($chatId, "✅ تم حفظ رمز المنتج (SKU): " . trim($text) . "\n📝 الرجاء إدخال وصف المنتج:");
             return;
         }
                 
@@ -1133,6 +1141,9 @@ writeLog("Received update: " . json_encode($update));
                     // السعر
                     $msg .= "💰 السعر: " . ($prod["price"] ?? "غير محدد") . "\n";
                     
+                    // رمز المنتج SKU
+                    $msg .= "🏷️ رمز المنتج (SKU): " . (isset($prod["sku"]) && trim($prod["sku"]) !== '' ? $prod["sku"] : "غير محدد") . "\n";
+                    
                     // الوصف
                     $msg .= "📄 الوصف: " . ($usersData[$userId]["description"] ?? "غير محدد") . "\n";
                     
@@ -1204,14 +1215,12 @@ writeLog("Received update: " . json_encode($update));
                     return;
                 }
                 
-                // التحقق من اكتمال البيانات
+                // التحقق من اكتمال البيانات (العلامات والألوان/المقاسات اختيارية)
                 if (isset($usersData[$userId]["product"]["name"]) &&
                     isset($usersData[$userId]["product"]["price"]) &&
                     isset($usersData[$userId]["product"]["category"]) &&
-                    !empty($usersData[$userId]["description"]) &&
-                    !empty($usersData[$userId]["attributes"]) &&
-                    !empty($usersData[$userId]["tags"]) &&
-                    !empty($usersData[$userId]["brand"])) {
+                    !empty(trim($usersData[$userId]["description"] ?? '')) &&
+                    !empty(trim($usersData[$userId]["brand"] ?? ''))) {
                     
                     writeLog("Starting direct product upload for user: " . $userId);
                     sendTelegramMessage($chatId, "⏳ جاري رفع المنتج...");
@@ -1299,9 +1308,9 @@ writeLog("Received update: " . json_encode($update));
             case "✏️ تعديل البيانات":
                 $editKeyboard = [
                     ['تعديل الاسم', 'تعديل السعر'],
-                    ['تعديل الوصف', 'تعديل العلامات'],
-                    ['تعديل الألوان', 'تعديل المقاسات'],
-                    ['تعديل الكميات'],
+                    ['تعديل SKU', 'تعديل الوصف'],
+                    ['تعديل العلامات', 'تعديل الألوان'],
+                    ['تعديل المقاسات', 'تعديل الكميات'],
                     ['رجوع']
                 ];
                 
@@ -1367,6 +1376,9 @@ writeLog("Received update: " . json_encode($update));
                     
                     // السعر
                     $msg .= "💰 السعر: " . ($prod["price"] ?? "غير محدد") . "\n";
+                    
+                    // رمز المنتج SKU
+                    $msg .= "🏷️ رمز المنتج (SKU): " . (isset($prod["sku"]) && trim($prod["sku"]) !== '' ? $prod["sku"] : "غير محدد") . "\n";
                     
                     // الوصف
                     $msg .= "📄 الوصف: " . ($usersData[$userId]["description"] ?? "غير محدد") . "\n";
@@ -1496,7 +1508,12 @@ writeLog("Received update: " . json_encode($update));
                 sendTelegramMessage($chatId, "💰 الرجاء إدخال السعر الجديد:");
                         break;
 
-
+            case "تعديل SKU":
+                $usersData[$userId]["edit_mode"] = "editsku";
+                $usersData[$userId]["step"] = null;
+                saveData($usersData, $dataFile);
+                sendTelegramMessage($chatId, "🏷️ الرجاء إدخال رمز المنتج (SKU) الجديد - أرقام أو أحرف:");
+                break;
 
             case "تعديل الوصف":
                 $usersData[$userId]["edit_mode"] = "editdescription";
@@ -1842,6 +1859,7 @@ function uploadProduct($userData, $chatId) {
             'short_description' => $enhancedDescription,
             'manage_stock' => false,
             'stock_status' => 'instock',
+            'sku' => isset($userData["product"]["sku"]) && trim($userData["product"]["sku"]) !== '' ? trim($userData["product"]["sku"]) : '',
             'categories' => [
                 ['id' => getCategoryIdBySimilarity($userData["product"]["category"])]
             ],
@@ -2838,7 +2856,25 @@ function uploadProduct($userData, $chatId) {
                     sendTelegramMessage($chatId, "⚠️ الرجاء إدخال سعر صالح.");
                 }
                 break;
+
+            case "editsku":
+                $usersData[$userId]["product"]["sku"] = trim($text);
+                $usersData[$userId]["edit_mode"] = null;
+                saveData($usersData, $dataFile);
+                sendTelegramMessage($chatId, "✅ تم تحديث رمز المنتج (SKU) بنجاح.");
                 
+                $mainKeyboard = [
+                    ['📋 عرض البيانات الحالية', '📤 رفع المنتج'],
+                    ['🗑️ حذف آخر صورة', '✏️ تعديل البيانات'],
+                    ['❌ إلغاء المنتج']
+                ];
+                $replyMarkup = [
+                    'keyboard' => $mainKeyboard,
+                    'resize_keyboard' => true,
+                    'one_time_keyboard' => false
+                ];
+                sendTelegramKeyboard($chatId, "اختر من القائمة:", $replyMarkup);
+                break;
 
                 
             case "editdescription":
