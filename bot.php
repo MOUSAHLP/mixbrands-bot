@@ -1,4 +1,5 @@
 <?php
+// test
 // ===== بوت إضافة المنتجات مع نظام كلمة المرور =====
 // https: //api.telegram.org/bot7781767577:AAHOC7H2bDmYQM_5JnbwDQl90JYoy2CNdq4/setWebhook?url=https://mixbrands.shop/bot.php
 
@@ -2991,6 +2992,7 @@ function uploadProduct($userData, $chatId) {
     - استخدم أمر /users لمراقبة المستخدمين المصرح لهم
     - في حالة الطوارئ، استخدم /clearusers لمسح جميع الصلاحيات
     */
+
 
 
 
