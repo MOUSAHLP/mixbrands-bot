@@ -95,9 +95,7 @@ function removeUserAuthorization($userId) {
     return false;
 }
 
-$content = file_get_contents("php://input");
-$update = json_decode($content, true);
-writeLog("Received update: " . json_encode($update));
+// لا تُقرأ php://input مرة ثانية - تُقرأ مرة واحدة فقط في أعلى الملف وإلا تصبح $update فارغة ولا تُحفظ البيانات
 
     // دعم استقبال callback_query
     if (isset($update["callback_query"])) {
@@ -1214,17 +1212,28 @@ writeLog("Received update: " . json_encode($update));
             case "/upload":
                 writeLog("Upload request received from user: " . $userId);
                 
-                if (empty($usersData[$userId]["images"])) {
+                // إعادة قراءة البيانات من الملف لضمان الحصول على آخر حالة محفوظة (تجنب فقدان الاسم/السعر/الوصف)
+                $usersData = json_decode(file_get_contents($dataFile), true) ?: [];
+                $userKey = (string)$userId;
+                if (!isset($usersData[$userKey])) {
+                    $userKey = $userId;
+                }
+                $ud = $usersData[$userKey] ?? $usersData[$userId] ?? [];
+                
+                if (empty($ud["images"])) {
                     sendTelegramMessage($chatId, "⚠️ الرجاء إضافة صورة واحدة على الأقل قبل رفع المنتج.");
                     return;
                 }
                 
                 // التحقق من اكتمال البيانات (العلامات والألوان/المقاسات اختيارية)
-                $hasName = isset($usersData[$userId]["product"]["name"]) && trim($usersData[$userId]["product"]["name"] ?? '') !== '';
-                $hasPrice = isset($usersData[$userId]["product"]["price"]) && $usersData[$userId]["product"]["price"] !== '' && $usersData[$userId]["product"]["price"] !== null;
-                $hasCategory = isset($usersData[$userId]["product"]["category"]) && trim($usersData[$userId]["product"]["category"] ?? '') !== '';
-                $hasDescription = !empty(trim($usersData[$userId]["description"] ?? ''));
-                $hasBrand = !empty(trim($usersData[$userId]["brand"] ?? ''));
+                $prod = $ud["product"] ?? [];
+                $hasName = isset($prod["name"]) && trim((string)($prod["name"] ?? '')) !== '';
+                $hasPrice = isset($prod["price"]) && (string)($prod["price"] ?? '') !== '' && $prod["price"] !== null;
+                $hasCategory = isset($prod["category"]) && trim((string)($prod["category"] ?? '')) !== '';
+                $hasDescription = !empty(trim((string)($ud["description"] ?? '')));
+                $hasBrand = !empty(trim((string)($ud["brand"] ?? '')));
+                
+                writeLog("Upload check - userId: $userId, userKey: $userKey, hasName: " . ($hasName ? '1' : '0') . ", hasPrice: " . ($hasPrice ? '1' : '0') . ", hasCategory: " . ($hasCategory ? '1' : '0') . ", hasDesc: " . ($hasDescription ? '1' : '0') . ", hasBrand: " . ($hasBrand ? '1' : '0') . " | name: " . ($prod["name"] ?? '') . " | price: " . ($prod["price"] ?? ''));
                 
                 if ($hasName && $hasPrice && $hasCategory && $hasDescription && $hasBrand) {
                     
@@ -1232,15 +1241,16 @@ writeLog("Received update: " . json_encode($update));
                     sendTelegramMessage($chatId, "⏳ جاري رفع المنتج...");
                     
                     try {
-                        // رفع المنتج مباشرة
-                        $result = uploadProduct($usersData[$userId], $chatId);
+                        // رفع المنتج مباشرة (باستخدام البيانات المُعاد تحميلها من الملف)
+                        $result = uploadProduct($ud, $chatId);
                         writeLog("Upload result: " . ($result ? "success" : "failed"));
                         
                         if ($result === true) {
-                            $imageCount = count($usersData[$userId]["images"]);
+                            $imageCount = count($ud["images"]);
                             sendTelegramMessage($chatId, "✅ تم رفع المنتج بنجاح!\n📸 تم رفع " . $imageCount . " صور في معرض المنتج الرئيسي\n💡 جميع الصور ستظهر في المعرض بدون تكرار\n\nيمكنك إضافة منتج جديد باستخدام /new");
-                    unset($usersData[$userId]);
-                    saveData($usersData, $dataFile);
+                            unset($usersData[$userKey]);
+                            unset($usersData[$userId]);
+                            saveData($usersData, $dataFile);
                             writeLog("Product uploaded successfully and user data cleared");
                             
                             // عرض زر إضافة منتج جديد
