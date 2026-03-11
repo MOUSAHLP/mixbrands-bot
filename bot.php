@@ -22,8 +22,10 @@ if (!file_exists($authorizedUsersFile)) {
 }
 
 if (!file_exists($dataFile)) file_put_contents($dataFile, json_encode([]));
-$usersData = json_decode(file_get_contents($dataFile), true);
-$authorizedUsers = json_decode(file_get_contents($authorizedUsersFile), true);
+$usersData = json_decode(file_get_contents($dataFile), true) ?: [];
+// توحيد مفاتيح المستخدمين كنص لضمان التطابق عند الحفظ والقراءة
+$usersData = array_combine(array_map('strval', array_keys($usersData)), array_values($usersData));
+$authorizedUsers = json_decode(file_get_contents($authorizedUsersFile), true) ?: [];
 
 $content = file_get_contents("php://input");
 $update = json_decode($content, true);
@@ -101,7 +103,7 @@ function removeUserAuthorization($userId) {
     if (isset($update["callback_query"])) {
         $callback = $update["callback_query"];
         $chatId = $callback["message"]["chat"]["id"];
-        $userId = $callback["from"]["id"];
+        $userId = (string) $callback["from"]["id"];
         $data = $callback["data"];
         $messageId = $callback["message"]["message_id"];
         
@@ -639,9 +641,8 @@ function removeUserAuthorization($userId) {
     // استقبال الرسائل النصية
     if (isset($update["message"])) {
         $chatId = $update["message"]["chat"]["id"];
-        $userId = $update["message"]["from"]["id"];
-        
-
+        // استخدام مفتاح نصي ثابت لضمان تخزين البيانات في نفس المفتاح دائماً (حل مشكلة عدم التخزين)
+        $userId = (string) $update["message"]["from"]["id"];
         
         if (!isset($usersData[$userId])) {
             $usersData[$userId] = [
@@ -653,7 +654,7 @@ function removeUserAuthorization($userId) {
                 "tags" => [],
                 "description" => "",
                 "brand" => "",
-                "color_quantities" => [] // إضافة مصفوفة لتخزين كميات الألوان
+                "color_quantities" => []
             ];
         }
 
@@ -761,15 +762,24 @@ function removeUserAuthorization($userId) {
                 break;
 
             default:
-        if ($usersData[$userId]["step"] === "name") {
+        $currentStep = $usersData[$userId]["step"] ?? null;
+        writeLog("Message default branch - userId: $userId, step: " . ($currentStep ?? 'null') . ", text length: " . strlen($text));
+        
+        if ($currentStep === null) {
+            sendTelegramMessage($chatId, "⚠️ لبدء إضافة منتج، أرسل أولاً /new ثم أدخل البيانات بالترتيب (الاسم، السعر، SKU، الوصف، العلامات).");
+            return;
+        }
+        
+        if ($currentStep === "name") {
             $usersData[$userId]["product"]["name"] = $text;
             $usersData[$userId]["step"] = "price";
             saveData($usersData, $dataFile);
+            writeLog("Saved product name for user $userId: " . $text);
             sendTelegramMessage($chatId, "✅ تم حفظ الاسم: $text\n💰 الرجاء إدخال السعر:");
             return;
         }
                 
-        if ($usersData[$userId]["step"] === "price") {
+        if ($currentStep === "price") {
             if (!is_numeric($text) || $text <= 0) {
                 sendTelegramMessage($chatId, "⚠️ الرجاء إدخال سعر صالح:");
                 return;
@@ -777,22 +787,25 @@ function removeUserAuthorization($userId) {
             $usersData[$userId]["product"]["price"] = $text;
             $usersData[$userId]["step"] = "sku";
             saveData($usersData, $dataFile);
+            writeLog("Saved product price for user $userId: " . $text);
             sendTelegramMessage($chatId, "✅ تم حفظ السعر: $text\n🏷️ الرجاء إدخال رمز المنتج (SKU) - يمكن أن يكون أرقاماً أو أحرفاً:");
             return;
         }
 
-        if ($usersData[$userId]["step"] === "sku") {
+        if ($currentStep === "sku") {
             $usersData[$userId]["product"]["sku"] = trim($text);
             $usersData[$userId]["step"] = "description";
             saveData($usersData, $dataFile);
+            writeLog("Saved product sku for user $userId: " . trim($text));
             sendTelegramMessage($chatId, "✅ تم حفظ رمز المنتج (SKU): " . trim($text) . "\n📝 الرجاء إدخال وصف المنتج:");
             return;
         }
                 
-        if ($usersData[$userId]["step"] === "description") {
+        if ($currentStep === "description") {
             $usersData[$userId]["description"] = $text;
             $usersData[$userId]["step"] = "tags";
             saveData($usersData, $dataFile);
+            writeLog("Saved description for user $userId, length: " . strlen($text));
             sendTelegramMessage($chatId, "✅ تم حفظ الوصف\n🏷️ الرجاء إدخال العلامات (مفصولة بفواصل أو مسافات):\nمثال: علامة1، علامة2، علامة3");
             return;
         }
