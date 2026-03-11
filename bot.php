@@ -1074,8 +1074,11 @@ writeLog("Received update: " . json_encode($update));
 
         // تم إزالة معالجة ربط الألوان بالصور - الانتقال مباشرة للمقاسات
 
-        // معالجة الصور العادية
+        // معالجة الصور العادية - فقط عندما تكون في خطوة الصور
         if ($usersData[$userId]["step"] !== "images") {
+            $step = $usersData[$userId]["step"] ?? 'لا يوجد';
+            writeLog("Photo received but step is not 'images'. Current step: " . $step);
+            sendTelegramMessage($chatId, "⚠️ لا يمكن إضافة الصور الآن.\n\nيجب إكمال بيانات المنتج أولاً:\n📝 الاسم → 💰 السعر → 🏷️ SKU → 📄 الوصف → 🏷️ العلامات → 📁 التصنيف → 👔 الماركة → الألوان والمقاسات.\n\nأرسل /new ثم اتبع الخطوات بالترتيب. الصور تُضاف في النهاية فقط.");
             return;
         }
 
@@ -1207,6 +1210,7 @@ writeLog("Received update: " . json_encode($update));
                 break;
 
             case "📤 رفع المنتج":
+            case "رفع المنتج":
             case "/upload":
                 writeLog("Upload request received from user: " . $userId);
                 
@@ -1216,11 +1220,13 @@ writeLog("Received update: " . json_encode($update));
                 }
                 
                 // التحقق من اكتمال البيانات (العلامات والألوان/المقاسات اختيارية)
-                if (isset($usersData[$userId]["product"]["name"]) &&
-                    isset($usersData[$userId]["product"]["price"]) &&
-                    isset($usersData[$userId]["product"]["category"]) &&
-                    !empty(trim($usersData[$userId]["description"] ?? '')) &&
-                    !empty(trim($usersData[$userId]["brand"] ?? ''))) {
+                $hasName = isset($usersData[$userId]["product"]["name"]) && trim($usersData[$userId]["product"]["name"] ?? '') !== '';
+                $hasPrice = isset($usersData[$userId]["product"]["price"]) && $usersData[$userId]["product"]["price"] !== '' && $usersData[$userId]["product"]["price"] !== null;
+                $hasCategory = isset($usersData[$userId]["product"]["category"]) && trim($usersData[$userId]["product"]["category"] ?? '') !== '';
+                $hasDescription = !empty(trim($usersData[$userId]["description"] ?? ''));
+                $hasBrand = !empty(trim($usersData[$userId]["brand"] ?? ''));
+                
+                if ($hasName && $hasPrice && $hasCategory && $hasDescription && $hasBrand) {
                     
                     writeLog("Starting direct product upload for user: " . $userId);
                     sendTelegramMessage($chatId, "⏳ جاري رفع المنتج...");
@@ -1271,7 +1277,16 @@ writeLog("Received update: " . json_encode($update));
                         sendTelegramMessage($chatId, "❌ حدث خطأ أثناء رفع المنتج: " . $e->getMessage());
                     }
                 } else {
-                    sendTelegramMessage($chatId, "⚠️ الرجاء إكمال جميع البيانات المطلوبة قبل الرفع.\nاستخدم /show لعرض البيانات الحالية.");
+                    // توضيح بالضبط ما الناقص
+                    $missing = [];
+                    if (!$hasName) $missing[] = "📝 الاسم";
+                    if (!$hasPrice) $missing[] = "💰 السعر";
+                    if (!$hasCategory) $missing[] = "📁 التصنيف";
+                    if (!$hasDescription) $missing[] = "📄 الوصف";
+                    if (!$hasBrand) $missing[] = "👔 الماركة";
+                    $msg = "⚠️ لا يمكن الرفع - البيانات الناقصة:\n\n" . implode("\n", $missing);
+                    $msg .= "\n\n💡 الطريقة الصحيحة: أرسل /new ثم أدخل بالترتيب:\n1️⃣ اسم المنتج\n2️⃣ السعر\n3️⃣ رمز SKU\n4️⃣ الوصف\n5️⃣ العلامات\n6️⃣ اختر التصنيف والماركة والألوان والمقاسات\n7️⃣ بعدها أضف الصور واضغط رفع المنتج";
+                    sendTelegramMessage($chatId, $msg);
                 }
                 break;
 
