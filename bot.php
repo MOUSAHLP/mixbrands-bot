@@ -22,9 +22,7 @@ if (!file_exists($authorizedUsersFile)) {
 }
 
 if (!file_exists($dataFile)) file_put_contents($dataFile, json_encode([]));
-$usersData = json_decode(file_get_contents($dataFile), true) ?: [];
-// توحيد مفاتيح المستخدمين كنص لضمان التطابق عند الحفظ والقراءة
-$usersData = array_combine(array_map('strval', array_keys($usersData)), array_values($usersData));
+$usersData = loadDataWithLock($dataFile);
 $authorizedUsers = json_decode(file_get_contents($authorizedUsersFile), true) ?: [];
 
 $content = file_get_contents("php://input");
@@ -1062,7 +1060,7 @@ function removeUserAuthorization($userId) {
     // معالجة الصور
     if (isset($update["message"]["photo"])) {
         $chatId = $update["message"]["chat"]["id"];
-        $userId = $update["message"]["from"]["id"];
+        $userId = (string) $update["message"]["from"]["id"];
         
         if (!isset($usersData[$userId])) {
             $usersData[$userId] = [
@@ -1225,30 +1223,26 @@ function removeUserAuthorization($userId) {
             case "/upload":
                 writeLog("Upload request received from user: " . $userId);
                 
-                // إعادة قراءة البيانات من الملف لضمان الحصول على آخر حالة محفوظة (تجنب فقدان الاسم/السعر/الوصف)
-                $usersData = json_decode(file_get_contents($dataFile), true) ?: [];
+                // دائماً قراءة البيانات من الملف مع قفل لضمان الحصول على آخر حالة محفوظة (حل: مرة يرفع ومرة لا)
+                $usersDataFromFile = loadDataWithLock($dataFile);
                 $userKey = (string)$userId;
-                if (!isset($usersData[$userKey])) {
-                    $userKey = $userId;
-                }
-                $ud = $usersData[$userKey] ?? $usersData[$userId] ?? [];
-                
-                if (empty($ud["images"])) {
-                    sendTelegramMessage($chatId, "⚠️ الرجاء إضافة صورة واحدة على الأقل قبل رفع المنتج.");
-                    return;
-                }
-                
-                // التحقق من اكتمال البيانات (العلامات والألوان/المقاسات اختيارية)
+                $ud = $usersDataFromFile[$userKey] ?? $usersDataFromFile[$userId] ?? $usersData[$userKey] ?? $usersData[$userId] ?? [];
                 $prod = $ud["product"] ?? [];
                 $hasName = isset($prod["name"]) && trim((string)($prod["name"] ?? '')) !== '';
                 $hasPrice = isset($prod["price"]) && (string)($prod["price"] ?? '') !== '' && $prod["price"] !== null;
                 $hasCategory = isset($prod["category"]) && trim((string)($prod["category"] ?? '')) !== '';
                 $hasDescription = !empty(trim((string)($ud["description"] ?? '')));
                 $hasBrand = !empty(trim((string)($ud["brand"] ?? '')));
+                $hasAll = $hasName && $hasPrice && $hasCategory && $hasDescription && $hasBrand;
                 
-                writeLog("Upload check - userId: $userId, userKey: $userKey, hasName: " . ($hasName ? '1' : '0') . ", hasPrice: " . ($hasPrice ? '1' : '0') . ", hasCategory: " . ($hasCategory ? '1' : '0') . ", hasDesc: " . ($hasDescription ? '1' : '0') . ", hasBrand: " . ($hasBrand ? '1' : '0') . " | name: " . ($prod["name"] ?? '') . " | price: " . ($prod["price"] ?? ''));
+                if (empty($ud["images"])) {
+                    sendTelegramMessage($chatId, "⚠️ الرجاء إضافة صورة واحدة على الأقل قبل رفع المنتج.");
+                    return;
+                }
                 
-                if ($hasName && $hasPrice && $hasCategory && $hasDescription && $hasBrand) {
+                writeLog("Upload check - userId: $userId, hasName: " . ($hasName ? '1' : '0') . ", hasPrice: " . ($hasPrice ? '1' : '0') . ", hasCategory: " . ($hasCategory ? '1' : '0') . ", hasDesc: " . ($hasDescription ? '1' : '0') . ", hasBrand: " . ($hasBrand ? '1' : '0') . " | name: " . ($prod["name"] ?? '') . " | price: " . ($prod["price"] ?? ''));
+                
+                if ($hasAll) {
                     
                     writeLog("Starting direct product upload for user: " . $userId);
                     sendTelegramMessage($chatId, "⏳ جاري رفع المنتج...");
@@ -1261,6 +1255,7 @@ function removeUserAuthorization($userId) {
                         if ($result === true) {
                             $imageCount = count($ud["images"]);
                             sendTelegramMessage($chatId, "✅ تم رفع المنتج بنجاح!\n📸 تم رفع " . $imageCount . " صور في معرض المنتج الرئيسي\n💡 جميع الصور ستظهر في المعرض بدون تكرار\n\nيمكنك إضافة منتج جديد باستخدام /new");
+                            $usersData = loadDataWithLock($dataFile);
                             unset($usersData[$userKey]);
                             unset($usersData[$userId]);
                             saveData($usersData, $dataFile);
@@ -2376,9 +2371,41 @@ function uploadProduct($userData, $chatId) {
         return $response;
     }
 
+    // قراءة البيانات مع قفل مشارك لتجنب قراءة ملف أثناء الكتابة (حل التخزين المتقطع)
+    function loadDataWithLock($file) {
+        if (!file_exists($file)) return [];
+        $fp = fopen($file, 'r');
+        if (!$fp) return [];
+        if (flock($fp, LOCK_SH)) {
+            $content = stream_get_contents($fp);
+            flock($fp, LOCK_UN);
+            fclose($fp);
+            $data = json_decode($content, true) ?: [];
+            $data = is_array($data) ? array_combine(array_map('strval', array_keys($data)), array_values($data)) : [];
+            return $data;
+        }
+        fclose($fp);
+        return [];
+    }
+
     function saveData($data, $file)
     {
-        file_put_contents($file, json_encode($data));
+        if (is_array($data)) {
+            $data = array_combine(array_map('strval', array_keys($data)), array_values($data));
+        }
+        $fp = fopen($file, 'c+');
+        if (!$fp) {
+            writeLog("saveData: failed to open file: " . $file);
+            return;
+        }
+        if (flock($fp, LOCK_EX)) {
+            ftruncate($fp, 0);
+            rewind($fp);
+            fwrite($fp, json_encode($data));
+            fflush($fp);
+            flock($fp, LOCK_UN);
+        }
+        fclose($fp);
     }
 
     function commandsList()
