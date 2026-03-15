@@ -134,7 +134,16 @@ function removeUserAuthorization($userId) {
             if ($cat['id'] == $catId) {
                 $usersData[$userId]["product"]["category"] = $cat['name'];
                 $usersData[$userId]["step"] = "choose_brand";
+                writeLog("Before save category - userId: $userId, category: " . $cat['name']);
                 saveData($usersData, $dataFile);
+                writeLog("After save category - Saved category for user $userId: " . $cat['name']);
+                // التحقق من الحفظ
+                $verifyData = loadDataWithLock($dataFile);
+                if (isset($verifyData[$userId])) {
+                    writeLog("Verification - Category saved correctly: " . ($verifyData[$userId]["product"]["category"] ?? "NOT FOUND"));
+                } else {
+                    writeLog("ERROR - User data not found after save category! userId: $userId");
+                }
                 
                 // جلب البراندات
                 $brands = getAllBrands();
@@ -168,7 +177,16 @@ function removeUserAuthorization($userId) {
             if ($brand['id'] == $brandId) {
                 $usersData[$userId]["brand"] = $brand['name'];
                 $usersData[$userId]["step"] = "choose_color";
+                writeLog("Before save brand - userId: $userId, brand: " . $brand['name']);
                 saveData($usersData, $dataFile);
+                writeLog("After save brand - Saved brand for user $userId: " . $brand['name']);
+                // التحقق من الحفظ
+                $verifyData = loadDataWithLock($dataFile);
+                if (isset($verifyData[$userId])) {
+                    writeLog("Verification - Brand saved correctly: " . ($verifyData[$userId]["brand"] ?? "NOT FOUND"));
+                } else {
+                    writeLog("ERROR - User data not found after save brand! userId: $userId");
+                }
                 
                 sendTelegramMessage($chatId, "✅ تم اختيار الماركة: " . $brand['name']);
                 
@@ -771,8 +789,16 @@ function removeUserAuthorization($userId) {
         if ($currentStep === "name") {
             $usersData[$userId]["product"]["name"] = $text;
             $usersData[$userId]["step"] = "price";
+            writeLog("Before save - userId: $userId, name: $text, product data: " . json_encode($usersData[$userId]["product"]));
             saveData($usersData, $dataFile);
-            writeLog("Saved product name for user $userId: " . $text);
+            writeLog("After save - Saved product name for user $userId: " . $text);
+            // التحقق من الحفظ
+            $verifyData = loadDataWithLock($dataFile);
+            if (isset($verifyData[$userId])) {
+                writeLog("Verification - Name saved correctly: " . ($verifyData[$userId]["product"]["name"] ?? "NOT FOUND"));
+            } else {
+                writeLog("ERROR - User data not found after save! userId: $userId");
+            }
             sendTelegramMessage($chatId, "✅ تم حفظ الاسم: $text\n💰 الرجاء إدخال السعر:");
             return;
         }
@@ -784,8 +810,16 @@ function removeUserAuthorization($userId) {
             }
             $usersData[$userId]["product"]["price"] = $text;
             $usersData[$userId]["step"] = "sku";
+            writeLog("Before save - userId: $userId, price: $text, product data: " . json_encode($usersData[$userId]["product"]));
             saveData($usersData, $dataFile);
-            writeLog("Saved product price for user $userId: " . $text);
+            writeLog("After save - Saved product price for user $userId: " . $text);
+            // التحقق من الحفظ
+            $verifyData = loadDataWithLock($dataFile);
+            if (isset($verifyData[$userId])) {
+                writeLog("Verification - Price saved correctly: " . ($verifyData[$userId]["product"]["price"] ?? "NOT FOUND"));
+            } else {
+                writeLog("ERROR - User data not found after save! userId: $userId");
+            }
             sendTelegramMessage($chatId, "✅ تم حفظ السعر: $text\n🏷️ الرجاء إدخال رمز المنتج (SKU) - يمكن أن يكون أرقاماً أو أحرفاً:");
             return;
         }
@@ -802,8 +836,16 @@ function removeUserAuthorization($userId) {
         if ($currentStep === "description") {
             $usersData[$userId]["description"] = $text;
             $usersData[$userId]["step"] = "tags";
+            writeLog("Before save - userId: $userId, description length: " . strlen($text));
             saveData($usersData, $dataFile);
-            writeLog("Saved description for user $userId, length: " . strlen($text));
+            writeLog("After save - Saved description for user $userId, length: " . strlen($text));
+            // التحقق من الحفظ
+            $verifyData = loadDataWithLock($dataFile);
+            if (isset($verifyData[$userId])) {
+                writeLog("Verification - Description saved correctly, length: " . strlen($verifyData[$userId]["description"] ?? ""));
+            } else {
+                writeLog("ERROR - User data not found after save! userId: $userId");
+            }
             sendTelegramMessage($chatId, "✅ تم حفظ الوصف\n🏷️ الرجاء إدخال العلامات (مفصولة بفواصل أو مسافات):\nمثال: علامة1، علامة2، علامة3");
             return;
         }
@@ -1226,21 +1268,57 @@ function removeUserAuthorization($userId) {
                 // دائماً قراءة البيانات من الملف مع قفل لضمان الحصول على آخر حالة محفوظة (حل: مرة يرفع ومرة لا)
                 $usersDataFromFile = loadDataWithLock($dataFile);
                 $userKey = (string)$userId;
-                $ud = $usersDataFromFile[$userKey] ?? $usersDataFromFile[$userId] ?? $usersData[$userKey] ?? $usersData[$userId] ?? [];
+                
+                // محاولة قراءة البيانات بجميع الطرق الممكنة
+                $ud = null;
+                if (isset($usersDataFromFile[$userKey])) {
+                    $ud = $usersDataFromFile[$userKey];
+                    writeLog("Found user data using string key: $userKey");
+                } elseif (isset($usersDataFromFile[$userId])) {
+                    $ud = $usersDataFromFile[$userId];
+                    writeLog("Found user data using original userId: $userId");
+                } elseif (isset($usersData[$userKey])) {
+                    $ud = $usersData[$userKey];
+                    writeLog("Found user data in memory using string key: $userKey");
+                } elseif (isset($usersData[$userId])) {
+                    $ud = $usersData[$userId];
+                    writeLog("Found user data in memory using original userId: $userId");
+                }
+                
+                if (!$ud || !is_array($ud)) {
+                    $ud = [];
+                    writeLog("WARNING: No user data found! userId: $userId, userKey: $userKey");
+                    writeLog("Available keys in file: " . json_encode(array_keys($usersDataFromFile)));
+                    writeLog("Available keys in memory: " . json_encode(array_keys($usersData)));
+                }
+                
                 $prod = $ud["product"] ?? [];
-                $hasName = isset($prod["name"]) && trim((string)($prod["name"] ?? '')) !== '';
-                $hasPrice = isset($prod["price"]) && (string)($prod["price"] ?? '') !== '' && $prod["price"] !== null;
-                $hasCategory = isset($prod["category"]) && trim((string)($prod["category"] ?? '')) !== '';
-                $hasDescription = !empty(trim((string)($ud["description"] ?? '')));
-                $hasBrand = !empty(trim((string)($ud["brand"] ?? '')));
+                
+                // تسجيل تفصيلي لجميع البيانات
+                writeLog("=== DETAILED DATA CHECK ===");
+                writeLog("User ID: $userId (type: " . gettype($userId) . ")");
+                writeLog("User Key: $userKey (type: " . gettype($userKey) . ")");
+                writeLog("Product data: " . json_encode($prod));
+                writeLog("Description: " . ($ud["description"] ?? "NOT SET"));
+                writeLog("Brand: " . ($ud["brand"] ?? "NOT SET"));
+                writeLog("Category: " . ($prod["category"] ?? "NOT SET"));
+                writeLog("Images count: " . (isset($ud["images"]) ? count($ud["images"]) : 0));
+                
+                // تحسين التحقق من البيانات
+                $hasName = !empty($prod["name"]) && trim((string)$prod["name"]) !== '';
+                $hasPrice = !empty($prod["price"]) && is_numeric($prod["price"]) && $prod["price"] > 0;
+                $hasCategory = !empty($prod["category"]) && trim((string)$prod["category"]) !== '';
+                $hasDescription = !empty($ud["description"]) && trim((string)$ud["description"]) !== '';
+                $hasBrand = !empty($ud["brand"]) && trim((string)$ud["brand"]) !== '';
                 $hasAll = $hasName && $hasPrice && $hasCategory && $hasDescription && $hasBrand;
+                
+                writeLog("Validation results - Name: " . ($hasName ? 'YES' : 'NO') . ", Price: " . ($hasPrice ? 'YES' : 'NO') . ", Category: " . ($hasCategory ? 'YES' : 'NO') . ", Description: " . ($hasDescription ? 'YES' : 'NO') . ", Brand: " . ($hasBrand ? 'YES' : 'NO'));
+                writeLog("=== END DATA CHECK ===");
                 
                 if (empty($ud["images"])) {
                     sendTelegramMessage($chatId, "⚠️ الرجاء إضافة صورة واحدة على الأقل قبل رفع المنتج.");
                     return;
                 }
-                
-                writeLog("Upload check - userId: $userId, hasName: " . ($hasName ? '1' : '0') . ", hasPrice: " . ($hasPrice ? '1' : '0') . ", hasCategory: " . ($hasCategory ? '1' : '0') . ", hasDesc: " . ($hasDescription ? '1' : '0') . ", hasBrand: " . ($hasBrand ? '1' : '0') . " | name: " . ($prod["name"] ?? '') . " | price: " . ($prod["price"] ?? ''));
                 
                 if ($hasAll) {
                     
@@ -1302,7 +1380,17 @@ function removeUserAuthorization($userId) {
                     if (!$hasCategory) $missing[] = "📁 التصنيف";
                     if (!$hasDescription) $missing[] = "📄 الوصف";
                     if (!$hasBrand) $missing[] = "👔 الماركة";
+                    
+                    // إضافة معلومات تشخيصية
+                    $debugInfo = "\n\n🔍 معلومات تشخيصية:\n";
+                    $debugInfo .= "الاسم: " . ($prod["name"] ?? "غير موجود") . "\n";
+                    $debugInfo .= "السعر: " . ($prod["price"] ?? "غير موجود") . "\n";
+                    $debugInfo .= "التصنيف: " . ($prod["category"] ?? "غير موجود") . "\n";
+                    $debugInfo .= "الوصف: " . (empty($ud["description"]) ? "غير موجود" : "موجود (" . strlen($ud["description"] ?? "") . " حرف)") . "\n";
+                    $debugInfo .= "الماركة: " . ($ud["brand"] ?? "غير موجود");
+                    
                     $msg = "⚠️ لا يمكن الرفع - البيانات الناقصة:\n\n" . implode("\n", $missing);
+                    $msg .= $debugInfo;
                     $msg .= "\n\n💡 الطريقة الصحيحة: أرسل /new ثم أدخل بالترتيب:\n1️⃣ اسم المنتج\n2️⃣ السعر\n3️⃣ رمز SKU\n4️⃣ الوصف\n5️⃣ العلامات\n6️⃣ اختر التصنيف والماركة والألوان والمقاسات\n7️⃣ بعدها أضف الصور واضغط رفع المنتج";
                     sendTelegramMessage($chatId, $msg);
                 }
@@ -2401,9 +2489,11 @@ function uploadProduct($userData, $chatId) {
         if (flock($fp, LOCK_EX)) {
             ftruncate($fp, 0);
             rewind($fp);
-            fwrite($fp, json_encode($data));
+            $jsonData = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+            fwrite($fp, $jsonData);
             fflush($fp);
             flock($fp, LOCK_UN);
+            writeLog("saveData: Successfully saved data to file. Keys: " . json_encode(array_keys($data)));
         }
         fclose($fp);
     }
