@@ -569,7 +569,11 @@ function removeUserAuthorization($userId) {
     // إنهاء اختيار المقاسات
     if ($data === "done_sizes") {
         writeLog("Done sizes callback received");
-        writeLog("User data in done_sizes: " . json_encode($usersData[$userId]));
+        writeLog("Before done - userId: $userId, step: " . ($usersData[$userId]["step"] ?? "null"));
+        writeLog("Before done - Product data: " . json_encode($usersData[$userId]["product"] ?? []));
+        writeLog("Before done - Description: " . ($usersData[$userId]["description"] ?? "NOT SET"));
+        writeLog("Before done - Brand: " . ($usersData[$userId]["brand"] ?? "NOT SET"));
+        writeLog("Before done - Sizes: " . json_encode($usersData[$userId]["attributes"]["size"] ?? []));
         
         if (empty($usersData[$userId]["attributes"]["size"])) {
             writeLog("No sizes selected");
@@ -578,7 +582,24 @@ function removeUserAuthorization($userId) {
         }
 
         $usersData[$userId]["step"] = "images";
+        writeLog("Setting step to images for user $userId");
         saveData($usersData, $dataFile);
+        writeLog("After save - Saved step change to images");
+        
+        // التحقق من الحفظ
+        $verifyData = loadDataWithLock($dataFile);
+        if (isset($verifyData[$userId])) {
+            writeLog("Verification - Step saved correctly: " . ($verifyData[$userId]["step"] ?? "NOT FOUND"));
+            writeLog("Verification - Product name: " . ($verifyData[$userId]["product"]["name"] ?? "NOT FOUND"));
+            writeLog("Verification - Product price: " . ($verifyData[$userId]["product"]["price"] ?? "NOT FOUND"));
+            writeLog("Verification - Product category: " . ($verifyData[$userId]["product"]["category"] ?? "NOT FOUND"));
+            writeLog("Verification - Description: " . ($verifyData[$userId]["description"] ?? "NOT FOUND"));
+            writeLog("Verification - Brand: " . ($verifyData[$userId]["brand"] ?? "NOT FOUND"));
+            writeLog("Verification - Sizes: " . json_encode($verifyData[$userId]["attributes"]["size"] ?? []));
+        } else {
+            writeLog("ERROR - User data not found after done sizes! userId: $userId");
+            writeLog("Available keys in file: " . json_encode(array_keys($verifyData)));
+        }
         
         $selectedSizes = implode("، ", $usersData[$userId]["attributes"]["size"]);
         sendTelegramMessage($chatId, "✅ تم اختيار المقاسات التالية: " . $selectedSizes);
@@ -624,9 +645,29 @@ function removeUserAuthorization($userId) {
     // تخطي اختيار المقاسات
     if ($data === "skip_sizes") {
         writeLog("Skip sizes callback received");
+        writeLog("Before skip - userId: $userId, step: " . ($usersData[$userId]["step"] ?? "null"));
+        writeLog("Before skip - Product data: " . json_encode($usersData[$userId]["product"] ?? []));
+        writeLog("Before skip - Description: " . ($usersData[$userId]["description"] ?? "NOT SET"));
+        writeLog("Before skip - Brand: " . ($usersData[$userId]["brand"] ?? "NOT SET"));
         
         $usersData[$userId]["step"] = "images";
+        writeLog("Setting step to images for user $userId");
         saveData($usersData, $dataFile);
+        writeLog("After save - Saved step change to images");
+        
+        // التحقق من الحفظ
+        $verifyData = loadDataWithLock($dataFile);
+        if (isset($verifyData[$userId])) {
+            writeLog("Verification - Step saved correctly: " . ($verifyData[$userId]["step"] ?? "NOT FOUND"));
+            writeLog("Verification - Product name: " . ($verifyData[$userId]["product"]["name"] ?? "NOT FOUND"));
+            writeLog("Verification - Product price: " . ($verifyData[$userId]["product"]["price"] ?? "NOT FOUND"));
+            writeLog("Verification - Product category: " . ($verifyData[$userId]["product"]["category"] ?? "NOT FOUND"));
+            writeLog("Verification - Description: " . ($verifyData[$userId]["description"] ?? "NOT FOUND"));
+            writeLog("Verification - Brand: " . ($verifyData[$userId]["brand"] ?? "NOT FOUND"));
+        } else {
+            writeLog("ERROR - User data not found after skip sizes! userId: $userId");
+            writeLog("Available keys in file: " . json_encode(array_keys($verifyData)));
+        }
         
         sendTelegramMessage($chatId, "⏭️ تم تخطي اختيار المقاسات.");
         sendTelegramMessage($chatId, "📸 يمكنك الآن إرسال صور المنتج (واحدة تلو الأخرى).\n💡 جميع الصور ستظهر في معرض المنتج الرئيسي.");
@@ -1265,30 +1306,39 @@ function removeUserAuthorization($userId) {
             case "/upload":
                 writeLog("Upload request received from user: " . $userId);
                 
-                // دائماً قراءة البيانات من الملف مع قفل لضمان الحصول على آخر حالة محفوظة (حل: مرة يرفع ومرة لا)
-                $usersDataFromFile = loadDataWithLock($dataFile);
+                // استخدام البيانات من الذاكرة أولاً (أحدث) ثم من الملف
                 $userKey = (string)$userId;
                 
-                // محاولة قراءة البيانات بجميع الطرق الممكنة
+                // محاولة قراءة البيانات من الذاكرة أولاً (أحدث)
                 $ud = null;
-                if (isset($usersDataFromFile[$userKey])) {
-                    $ud = $usersDataFromFile[$userKey];
-                    writeLog("Found user data using string key: $userKey");
-                } elseif (isset($usersDataFromFile[$userId])) {
-                    $ud = $usersDataFromFile[$userId];
-                    writeLog("Found user data using original userId: $userId");
-                } elseif (isset($usersData[$userKey])) {
+                if (isset($usersData[$userKey])) {
                     $ud = $usersData[$userKey];
                     writeLog("Found user data in memory using string key: $userKey");
                 } elseif (isset($usersData[$userId])) {
                     $ud = $usersData[$userId];
                     writeLog("Found user data in memory using original userId: $userId");
+                } else {
+                    // إذا لم توجد في الذاكرة، اقرأ من الملف
+                    $usersDataFromFile = loadDataWithLock($dataFile);
+                    if (isset($usersDataFromFile[$userKey])) {
+                        $ud = $usersDataFromFile[$userKey];
+                        writeLog("Found user data in file using string key: $userKey");
+                        // تحديث الذاكرة بالبيانات من الملف
+                        $usersData[$userKey] = $ud;
+                    } elseif (isset($usersDataFromFile[$userId])) {
+                        $ud = $usersDataFromFile[$userId];
+                        writeLog("Found user data in file using original userId: $userId");
+                        // تحديث الذاكرة بالبيانات من الملف
+                        $usersData[$userId] = $ud;
+                    }
                 }
                 
                 if (!$ud || !is_array($ud)) {
                     $ud = [];
                     writeLog("WARNING: No user data found! userId: $userId, userKey: $userKey");
-                    writeLog("Available keys in file: " . json_encode(array_keys($usersDataFromFile)));
+                    if (isset($usersDataFromFile)) {
+                        writeLog("Available keys in file: " . json_encode(array_keys($usersDataFromFile)));
+                    }
                     writeLog("Available keys in memory: " . json_encode(array_keys($usersData)));
                 }
                 
@@ -2490,10 +2540,18 @@ function uploadProduct($userData, $chatId) {
             ftruncate($fp, 0);
             rewind($fp);
             $jsonData = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-            fwrite($fp, $jsonData);
+            $bytesWritten = fwrite($fp, $jsonData);
             fflush($fp);
             flock($fp, LOCK_UN);
-            writeLog("saveData: Successfully saved data to file. Keys: " . json_encode(array_keys($data)));
+            writeLog("saveData: Successfully saved data to file. Keys: " . json_encode(array_keys($data)) . ", Bytes written: $bytesWritten");
+            
+            // تسجيل تفصيلي لكل مفتاح
+            foreach ($data as $key => $value) {
+                if (is_array($value) && isset($value["product"])) {
+                    $prod = $value["product"] ?? [];
+                    writeLog("saveData - Key $key: name=" . ($prod["name"] ?? "NOT SET") . ", price=" . ($prod["price"] ?? "NOT SET") . ", category=" . ($prod["category"] ?? "NOT SET") . ", desc=" . (isset($value["description"]) ? "SET(" . strlen($value["description"]) . ")" : "NOT SET") . ", brand=" . ($value["brand"] ?? "NOT SET"));
+                }
+            }
         }
         fclose($fp);
     }
