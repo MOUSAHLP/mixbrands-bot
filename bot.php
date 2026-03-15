@@ -246,11 +246,25 @@ if (isset($update["message"])) {
                 }
                 
                 // التحقق من اكتمال البيانات
-                if (isset($usersData[$userId]["product"]["name"]) &&
-                    isset($usersData[$userId]["product"]["price"]) &&
-                    !empty($usersData[$userId]["long_description"]) &&
-                    !empty($usersData[$userId]["barcode"]) &&
-                    !empty($usersData[$userId]["sku"])) {
+                $productName = $usersData[$userId]["product"]["name"] ?? "";
+                $productPrice = $usersData[$userId]["product"]["price"] ?? "";
+                $longDescription = $usersData[$userId]["long_description"] ?? "";
+                $barcode = $usersData[$userId]["barcode"] ?? "";
+                $sku = $usersData[$userId]["sku"] ?? "";
+                
+                // تسجيل البيانات للتشخيص
+                writeLog("Validation check for user $userId:");
+                writeLog("Name: " . (!empty($productName) ? "exists" : "missing") . " - Value: " . substr($productName, 0, 50));
+                writeLog("Price: " . (!empty($productPrice) ? "exists" : "missing") . " - Value: " . $productPrice);
+                writeLog("Long Description: " . (!empty($longDescription) ? "exists" : "missing") . " - Length: " . strlen($longDescription));
+                writeLog("Barcode: " . (!empty($barcode) ? "exists" : "missing") . " - Value: " . $barcode);
+                writeLog("SKU: " . (!empty($sku) ? "exists" : "missing") . " - Value: " . $sku);
+                
+                if (!empty($productName) &&
+                    !empty($productPrice) &&
+                    !empty($longDescription) &&
+                    !empty($barcode) &&
+                    !empty($sku)) {
                     
                     writeLog("Starting product upload for user: " . $userId);
                     sendTelegramMessage($chatId, "⏳ جاري رفع المنتج...");
@@ -301,14 +315,30 @@ if (isset($update["message"])) {
                     }
                 } else {
                     $missingFields = [];
-                    if (!isset($usersData[$userId]["product"]["name"])) $missingFields[] = "الاسم";
-                    if (!isset($usersData[$userId]["product"]["price"])) $missingFields[] = "السعر";
-                    if (empty($usersData[$userId]["long_description"])) $missingFields[] = "الوصف الطويل";
-                    if (empty($usersData[$userId]["barcode"])) $missingFields[] = "الباركود";
-                    if (empty($usersData[$userId]["sku"])) $missingFields[] = "رمز SKU";
+                    if (empty($productName)) $missingFields[] = "الاسم";
+                    if (empty($productPrice)) $missingFields[] = "السعر";
+                    if (empty($longDescription)) $missingFields[] = "الوصف";
+                    if (empty($barcode)) $missingFields[] = "الباركود";
+                    if (empty($sku)) $missingFields[] = "رمز SKU";
                     
                     $missingText = implode(", ", $missingFields);
-                    sendTelegramMessage($chatId, "⚠️ الرجاء إكمال جميع البيانات المطلوبة قبل الرفع.\n\nالبيانات المفقودة: $missingText\n\nاستخدم /show لعرض البيانات الحالية.");
+                    $errorMessage = "⚠️ لا يمكن الرفع - البيانات الناقصة:\n\n";
+                    foreach ($missingFields as $field) {
+                        $icon = "📄";
+                        if ($field === "السعر") $icon = "💰";
+                        elseif ($field === "الوصف") $icon = "📄";
+                        $errorMessage .= "$icon $field\n";
+                    }
+                    $errorMessage .= "\n💡 الطريقة الصحيحة: أرسل /new ثم أدخل بالترتيب:\n";
+                    $errorMessage .= "1️⃣ اسم المنتج\n";
+                    $errorMessage .= "2️⃣ السعر\n";
+                    $errorMessage .= "3️⃣ رمز SKU\n";
+                    $errorMessage .= "4️⃣ الوصف\n";
+                    $errorMessage .= "5️⃣ العلامات\n";
+                    $errorMessage .= "6️⃣ اختر التصنيف والماركة والألوان والمقاسات\n";
+                    $errorMessage .= "7️⃣ بعدها أضف الصور واضغط رفع المنتج";
+                    
+                    sendTelegramMessage($chatId, $errorMessage);
                 }
                 break;
 
